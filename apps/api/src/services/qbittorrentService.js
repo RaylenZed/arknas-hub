@@ -1,5 +1,7 @@
 import { HttpError } from "../lib/httpError.js";
 import { getRawIntegrationConfig } from "./settingsService.js";
+import fs from "node:fs";
+import path from "node:path";
 
 class QBClient {
   constructor() {
@@ -104,26 +106,37 @@ function isQBConfigured() {
   return Boolean(cfg.baseUrl && cfg.username && cfg.password);
 }
 
+function buildUnavailableSummary(reason) {
+  return {
+    configured: false,
+    available: false,
+    transfer: {},
+    summary: {
+      downloading: 0,
+      seeding: 0,
+      completed: 0,
+      dlSpeed: 0,
+      upSpeed: 0
+    },
+    reason
+  };
+}
+
 export async function getDownloadSummary() {
   if (!isQBConfigured()) {
-    return {
-      configured: false,
-      transfer: {},
-      summary: {
-        downloading: 0,
-        seeding: 0,
-        completed: 0,
-        dlSpeed: 0,
-        upSpeed: 0
-      },
-      reason: "qBittorrent 未完成配置（需 baseUrl、用户名、密码）"
-    };
+    return buildUnavailableSummary("qBittorrent 未完成配置（需 baseUrl、用户名、密码）");
   }
 
-  const [transfer, maindata] = await Promise.all([
-    qb.request("/api/v2/transfer/info"),
-    qb.request("/api/v2/sync/maindata")
-  ]);
+  let transfer;
+  let maindata;
+  try {
+    [transfer, maindata] = await Promise.all([
+      qb.request("/api/v2/transfer/info"),
+      qb.request("/api/v2/sync/maindata")
+    ]);
+  } catch (err) {
+    return buildUnavailableSummary(`qBittorrent 连接失败：${err.message}`);
+  }
 
   const torrents = maindata?.torrents ? Object.values(maindata.torrents) : [];
   const downloading = torrents.filter((t) => String(t.state).includes("downloading")).length;
@@ -132,6 +145,7 @@ export async function getDownloadSummary() {
 
   return {
     configured: true,
+    available: true,
     transfer,
     summary: {
       downloading,
@@ -145,7 +159,11 @@ export async function getDownloadSummary() {
 
 export async function listTasks(filter = "all") {
   if (!isQBConfigured()) return [];
-  return qb.request("/api/v2/torrents/info", { query: { filter } });
+  try {
+    return await qb.request("/api/v2/torrents/info", { query: { filter } });
+  } catch {
+    return [];
+  }
 }
 
 export async function addMagnet(urls, savepath = "") {
@@ -163,6 +181,41 @@ export async function addTorrentFile(file, savepath = "") {
     method: "POST",
     form
   });
+}
+
+function normalizeSourceUrls(value) {
+  const raw = String(value || "").trim();
+  if (!raw) throw new HttpError(400, "下载来源不能为空");
+  const lines = raw
+    .split(/\r?\n/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (lines.length === 0) throw new HttpError(400, "下载来源不能为空");
+  return lines.join("\n");
+}
+
+export async function addSourceTask({ type = "link", source, savepath = "" } = {}) {
+  const sourceType = String(type || "link").trim();
+  if (sourceType === "nas-torrent") {
+    const filePath = path.resolve(String(source || "").trim());
+    if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
+      throw new HttpError(400, "NAS 种子文件不存在");
+    }
+    if (!filePath.toLowerCase().endsWith(".torrent")) {
+      throw new HttpError(400, "NAS 来源仅支持 .torrent 文件");
+    }
+    const content = fs.readFileSync(filePath);
+    return addTorrentFile(
+      {
+        buffer: content,
+        originalname: path.basename(filePath)
+      },
+      savepath
+    );
+  }
+
+  const normalized = normalizeSourceUrls(source);
+  return addMagnet(normalized, savepath);
 }
 
 export async function pauseTasks(hashes) {

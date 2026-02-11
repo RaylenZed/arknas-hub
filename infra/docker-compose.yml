@@ -30,6 +30,10 @@ services:
       dockerfile: Dockerfile
     container_name: arknas-api
     restart: unless-stopped
+    pid: host
+    cap_add:
+      - SYS_ADMIN
+      - NET_ADMIN
     environment:
       NODE_ENV: production
       PORT: 8081
@@ -38,6 +42,8 @@ services:
       CERTS_DIR: /data/certs
       JWT_SECRET: ${JWT_SECRET:-please-change-me}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-12h}
+      FORCE_HTTPS_AUTH: ${FORCE_HTTPS_AUTH:-1}
+      ALLOW_PLAINTEXT_LOGIN: ${ALLOW_PLAINTEXT_LOGIN:-0}
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123456}
       DOCKER_HOST: tcp://docker-proxy:2375
@@ -56,6 +62,10 @@ services:
       PORTAINER_HOST_PORT: ${PORTAINER_HOST_PORT:-19000}
       WATCHTOWER_INTERVAL: ${WATCHTOWER_INTERVAL:-86400}
       ARKNAS_INTERNAL_NETWORK: ${ARKNAS_INTERNAL_NETWORK:-arknas-hub_arknas_internal}
+      COMPOSE_PROJECTS_DIR: ${COMPOSE_PROJECTS_DIR:-/data/compose-projects}
+      ARKNAS_ALLOW_HOST_SERVICE_CONTROL: ${ARKNAS_ALLOW_HOST_SERVICE_CONTROL:-1}
+      ARKNAS_ALLOW_HOST_NETWORK_APPLY: ${ARKNAS_ALLOW_HOST_NETWORK_APPLY:-1}
+      ARKNAS_HOST_EXEC_MODE: ${ARKNAS_HOST_EXEC_MODE:-nsenter}
       ACME_EMAIL: ${ACME_EMAIL:-}
       ACME_DIRECTORY: ${ACME_DIRECTORY:-https://acme-v02.api.letsencrypt.org/directory}
       CLOUDFLARE_API_TOKEN: ${CLOUDFLARE_API_TOKEN:-}

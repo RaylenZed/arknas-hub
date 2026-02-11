@@ -17,6 +17,7 @@ import {
 } from "./appTaskService.js";
 import { writeAudit } from "./auditService.js";
 import { config } from "../config.js";
+import { db } from "../db.js";
 
 const APP_DEFINITIONS = {
   jellyfin: {
@@ -735,6 +736,42 @@ export async function listManagedApps() {
 
 export function listManagedBundles() {
   return Object.values(BUNDLE_DEFINITIONS);
+}
+
+export function listAppPermissions(appId) {
+  getAppDef(appId);
+  return db
+    .prepare(
+      `SELECT id, app_id, path, permission, visibility, created_at, updated_at
+       FROM app_permissions
+       WHERE app_id = ?
+       ORDER BY id ASC`
+    )
+    .all(appId);
+}
+
+export function saveAppPermissions(appId, rows = []) {
+  getAppDef(appId);
+  const list = Array.isArray(rows) ? rows : [];
+  const now = new Date().toISOString();
+  const del = db.prepare("DELETE FROM app_permissions WHERE app_id = ?");
+  const ins = db.prepare(
+    `INSERT INTO app_permissions (app_id, path, permission, visibility, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?)`
+  );
+
+  const tx = db.transaction(() => {
+    del.run(appId);
+    for (const row of list) {
+      const permission = String(row.permission || "rw");
+      const visibility = String(row.visibility || "all-users");
+      const p = String(row.path || "").trim();
+      if (!p) continue;
+      ins.run(appId, p, permission, visibility, now, now);
+    }
+  });
+  tx();
+  return listAppPermissions(appId);
 }
 
 export function listManagedAppTasks(limit = 60) {

@@ -102,6 +102,53 @@ export async function refreshLibrary() {
   return { ok: true };
 }
 
+export async function listMediaLibrary({ types = "", searchTerm = "", limit = 60, startIndex = 0 } = {}) {
+  const cfg = getJellyfinConfig();
+  if (!isConfigured(cfg)) {
+    return {
+      configured: false,
+      items: [],
+      total: 0,
+      reason: "Jellyfin 未完成配置（需 baseUrl、API Key、User ID）"
+    };
+  }
+
+  const includeItemTypes = String(types || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .join(",");
+
+  try {
+    const data = await jellyfinFetch("/Users/" + cfg.userId + "/Items", {
+      query: {
+        Recursive: true,
+        IncludeItemTypes: includeItemTypes || undefined,
+        SearchTerm: searchTerm || undefined,
+        SortBy: "DateCreated,SortName",
+        SortOrder: "Descending",
+        Limit: Math.min(120, Math.max(1, Number(limit) || 60)),
+        StartIndex: Math.max(0, Number(startIndex) || 0),
+        Fields: "PrimaryImageAspectRatio,Overview,DateCreated"
+      }
+    });
+
+    const items = (data.Items || []).map((item) => withImageUrl(cfg.baseUrl, item));
+    return {
+      configured: true,
+      items,
+      total: Number(data.TotalRecordCount || items.length)
+    };
+  } catch (err) {
+    return {
+      configured: false,
+      items: [],
+      total: 0,
+      reason: `Jellyfin 连接失败：${err.message}`
+    };
+  }
+}
+
 export async function getMediaSummary() {
   const cfg = getJellyfinConfig();
   if (!isConfigured(cfg)) {
@@ -119,11 +166,29 @@ export async function getMediaSummary() {
     };
   }
 
-  const [continueWatching, latest, sessions] = await Promise.all([
-    getContinueWatching(8),
-    getLatestItems(12),
-    getActiveSessions()
-  ]);
+  let continueWatching;
+  let latest;
+  let sessions;
+  try {
+    [continueWatching, latest, sessions] = await Promise.all([
+      getContinueWatching(8),
+      getLatestItems(12),
+      getActiveSessions()
+    ]);
+  } catch (err) {
+    return {
+      configured: false,
+      continueWatching: [],
+      latest: [],
+      sessions: [],
+      summary: {
+        activeSessions: 0,
+        continueCount: 0,
+        latestCount: 0
+      },
+      reason: `Jellyfin 连接失败：${err.message}`
+    };
+  }
 
   return {
     configured: true,

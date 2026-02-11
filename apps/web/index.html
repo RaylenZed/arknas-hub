@@ -72,7 +72,7 @@
         </div>
         <button type="submit" class="btn btn-primary full">登录</button>
         <p class="hint">管理员密码只在首次初始化时由 `ADMIN_USERNAME` / `ADMIN_PASSWORD` 写入。</p>
-        <p class="hint">公网访问请使用 HTTPS（HTTP 会暴露传输内容）。</p>
+        <p class="hint">登录会使用公钥加密提交；建议公网始终使用 HTTPS。</p>
       </form>
     </div>
 
@@ -88,6 +88,7 @@
 
     <div id="toast" class="toast hidden"></div>
 
+    <script src="/vendor/jsencrypt.min.js"></script>
     <script src="/app.js" type="module"></script>
   </body>
 </html>

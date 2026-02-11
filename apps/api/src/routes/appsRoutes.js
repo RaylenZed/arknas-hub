@@ -6,9 +6,11 @@ import {
   createAppActionTask,
   getManagedAppTask,
   getManagedAppTaskLogs,
+  listAppPermissions,
   listManagedApps,
   listManagedAppTasks,
   listManagedBundles,
+  saveAppPermissions,
   retryManagedAppTask
 } from "../services/appsService.js";
 
@@ -67,6 +69,21 @@ router.get(
   "/bundles",
   asyncHandler(async (_req, res) => {
     res.json(listManagedBundles());
+  })
+);
+
+router.get(
+  "/:appId/permissions",
+  asyncHandler(async (req, res) => {
+    res.json(listAppPermissions(req.params.appId));
+  })
+);
+
+router.put(
+  "/:appId/permissions",
+  asyncHandler(async (req, res) => {
+    const rows = saveAppPermissions(req.params.appId, req.body?.permissions || []);
+    res.json(rows);
   })
 );
 

@@ -1,17 +1,26 @@
 import express from "express";
 import { asyncHandler } from "../middleware/asyncHandler.js";
-import { changePassword, createToken, loginUser } from "../auth.js";
+import { changePassword, createToken, decodeLoginPassword, getLoginPublicKey, loginUser } from "../auth.js";
 import { requireAuth } from "../middleware/authMiddleware.js";
 import { writeAudit } from "../services/auditService.js";
 import { HttpError } from "../lib/httpError.js";
 import { config } from "../config.js";
+import { getAccessPorts } from "../services/systemService.js";
 
 const router = express.Router();
+
+router.get(
+  "/public-key",
+  asyncHandler(async (_req, res) => {
+    res.json(getLoginPublicKey());
+  })
+);
 
 router.post(
   "/login",
   asyncHandler(async (req, res) => {
-    if (config.forceHttpsAuth) {
+    const accessPorts = getAccessPorts();
+    if (accessPorts.forceHttpsAuth || config.forceHttpsAuth) {
       const proto = String(req.headers["x-forwarded-proto"] || req.protocol || "").toLowerCase();
       const isSecure = req.secure || proto === "https";
       if (!isSecure) {
@@ -19,10 +28,16 @@ router.post(
       }
     }
 
-    const { username, password } = req.body || {};
-    if (!username || !password) throw new HttpError(400, "用户名和密码必填");
-
-    const user = loginUser(String(username), String(password));
+    const { username, password, passwordEncrypted, keyId, algorithm } = req.body || {};
+    const finalPassword = decodeLoginPassword({
+      password,
+      passwordEncrypted,
+      keyId,
+      algorithm,
+      allowPlaintext: config.allowPlainLoginPayload
+    });
+    if (!username || !finalPassword) throw new HttpError(400, "用户名和密码必填");
+    const user = loginUser(String(username), String(finalPassword));
     const token = createToken(user);
 
     writeAudit({ action: "login", actor: user.username, target: "auth", status: "ok" });

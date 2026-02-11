@@ -3,6 +3,7 @@ import multer from "multer";
 import { asyncHandler } from "../middleware/asyncHandler.js";
 import { requireAuth } from "../middleware/authMiddleware.js";
 import {
+  addSourceTask,
   addMagnet,
   addTorrentFile,
   deleteTasks,
@@ -59,6 +60,21 @@ router.post(
     if (!req.file) throw new HttpError(400, "torrent 文件缺失");
     await addTorrentFile(req.file, String(req.body?.savepath || ""));
     writeAudit({ action: "download_add_torrent", actor: req.user.username, target: req.file.originalname, status: "ok" });
+    res.json({ ok: true });
+  })
+);
+
+router.post(
+  "/add-source",
+  asyncHandler(async (req, res) => {
+    const { type = "link", source = "", savepath = "" } = req.body || {};
+    await addSourceTask({ type, source, savepath });
+    writeAudit({
+      action: "download_add_source",
+      actor: req.user.username,
+      target: String(type || "link"),
+      status: "ok"
+    });
     res.json({ ok: true });
   })
 );

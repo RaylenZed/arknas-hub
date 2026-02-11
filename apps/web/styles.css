@@ -229,6 +229,25 @@ body {
   background: #f59e0b;
 }
 
+.status-chip.status-running {
+  background: #e7f8ef;
+  color: #187a41;
+  border-color: #bde9cf;
+}
+
+.status-chip.status-error {
+  background: #fdecec;
+  color: #b42727;
+  border-color: #f2c5c5;
+}
+
+.status-chip.status-other,
+.status-chip.status-stopped {
+  background: #f3f6fb;
+  color: #556179;
+  border-color: #d6deea;
+}
+
 .table-wrap {
   overflow-x: auto;
 }
@@ -513,6 +532,64 @@ label {
   padding: 10px;
   display: grid;
   gap: 6px;
+}
+
+.banner-lite {
+  margin-top: 10px;
+  border: 1px solid #d8dff0;
+  background: #f1f4fb;
+  border-radius: 14px;
+  padding: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.status-chip {
+  border-radius: 999px;
+  padding: 5px 10px;
+  font-size: 12px;
+  border: 1px solid #d0d8e8;
+  background: #f8faff;
+}
+
+.app-store-card {
+  display: grid;
+  gap: 8px;
+}
+
+.app-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-weight: 700;
+}
+
+.media-wall {
+  align-items: stretch;
+}
+
+.media-wall-card {
+  align-content: start;
+}
+
+.media-poster {
+  width: 100%;
+  height: 180px;
+  object-fit: cover;
+  border-radius: 10px;
+}
+
+.media-poster-empty {
+  display: grid;
+  place-items: center;
+  color: #73819a;
+  background: #eef2f9;
 }
 
 .list-title {

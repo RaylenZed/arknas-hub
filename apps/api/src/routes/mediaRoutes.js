@@ -5,6 +5,7 @@ import {
   getActiveSessions,
   getContinueWatching,
   getLatestItems,
+  listMediaLibrary,
   getMediaSummary,
   refreshLibrary
 } from "../services/jellyfinService.js";
@@ -38,6 +39,20 @@ router.get(
   "/sessions",
   asyncHandler(async (_req, res) => {
     res.json(await getActiveSessions());
+  })
+);
+
+router.get(
+  "/library",
+  asyncHandler(async (req, res) => {
+    res.json(
+      await listMediaLibrary({
+        types: req.query.types,
+        searchTerm: req.query.search,
+        limit: req.query.limit,
+        startIndex: req.query.start
+      })
+    );
   })
 );
 

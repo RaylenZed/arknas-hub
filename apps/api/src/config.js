@@ -44,7 +44,12 @@ export const config = {
   cloudflareApiToken:
     process.env.CLOUDFLARE_API_TOKEN || cloudflareTokenFromFile || "",
   proxyPublicPort: Number(process.env.PUBLIC_PORT || 24443),
-  forceHttpsAuth: String(process.env.FORCE_HTTPS_AUTH || "0") === "1",
+  forceHttpsAuth: String(process.env.FORCE_HTTPS_AUTH || "1") === "1",
+  allowPlainLoginPayload: String(process.env.ALLOW_PLAINTEXT_LOGIN || "0") === "1",
+  composeProjectsDir: process.env.COMPOSE_PROJECTS_DIR || path.resolve(process.cwd(), "data/compose-projects"),
+  allowHostServiceControl: String(process.env.ARKNAS_ALLOW_HOST_SERVICE_CONTROL || "1") === "1",
+  allowHostNetworkApply: String(process.env.ARKNAS_ALLOW_HOST_NETWORK_APPLY || "1") === "1",
+  hostExecMode: process.env.ARKNAS_HOST_EXEC_MODE || "nsenter",
   timezone: process.env.TZ || "Asia/Shanghai"
 };
 

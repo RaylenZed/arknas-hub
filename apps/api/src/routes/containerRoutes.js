@@ -2,6 +2,8 @@ import express from "express";
 import { asyncHandler } from "../middleware/asyncHandler.js";
 import { requireAuth } from "../middleware/authMiddleware.js";
 import {
+  createComposeProject,
+  getDockerRegistrySettings,
   connectContainerToNetwork,
   controlComposeProject,
   controlContainer,
@@ -12,11 +14,13 @@ import {
   listComposeProjects,
   listDockerNetworks,
   listLocalImages,
+  removeComposeProject,
   pullImageByName,
   removeDockerNetwork,
   removeLocalImage,
   searchRegistryRepositories,
   disconnectContainerFromNetwork,
+  updateDockerRegistrySettings,
   updateContainer
 } from "../services/dockerService.js";
 import { writeAudit } from "../services/auditService.js";
@@ -42,6 +46,40 @@ router.get(
   "/compose/projects",
   asyncHandler(async (_req, res) => {
     res.json(await listComposeProjects());
+  })
+);
+
+router.post(
+  "/compose/projects",
+  asyncHandler(async (req, res) => {
+    const result = await createComposeProject(req.body || {});
+    writeAudit({
+      action: "compose_create",
+      actor: req.user.username,
+      target: result.project,
+      status: "ok"
+    });
+    res.status(201).json(result);
+  })
+);
+
+router.delete(
+  "/compose/projects/:project",
+  asyncHandler(async (req, res) => {
+    const down = Boolean(req.query.down === "1");
+    const removeFiles = Boolean(req.query.removeFiles === "1");
+    const result = await removeComposeProject(req.params.project, {
+      down,
+      removeFiles
+    });
+    writeAudit({
+      action: "compose_delete",
+      actor: req.user.username,
+      target: req.params.project,
+      status: "ok",
+      detail: JSON.stringify(result)
+    });
+    res.json(result);
   })
 );
 
@@ -106,6 +144,26 @@ router.get(
     const page = Number(req.query.page || 1);
     const limit = Number(req.query.limit || 20);
     res.json(await searchRegistryRepositories(q, page, limit));
+  })
+);
+
+router.get(
+  "/registry/settings",
+  asyncHandler(async (_req, res) => {
+    res.json(getDockerRegistrySettings());
+  })
+);
+
+router.put(
+  "/registry/settings",
+  asyncHandler(async (req, res) => {
+    const result = updateDockerRegistrySettings(req.body || {});
+    writeAudit({
+      action: "registry_settings_update",
+      actor: req.user.username,
+      status: "ok"
+    });
+    res.json(result);
   })
 );
 

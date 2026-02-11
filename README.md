@@ -13,13 +13,15 @@
   - 启动/停止/重启
   - 最近日志查看
   - 拉取镜像与可选重建更新
+  - Compose 创建向导（粘贴/已有文件）、项目启停重启、项目删除
+  - 镜像仓库设置（加速器/代理/Insecure Registry）
 - 影视管理（Jellyfin API）
   - 继续观看、最近添加、活跃会话
   - 一键触发媒体库刷新
 - 下载管理（qBittorrent API）
   - 下载任务列表（状态、进度、速度、ETA）
   - 暂停/继续/删除
-  - 添加磁力链接
+  - 添加磁力链接 / 飞牛分享链接 / NAS 种子路径 / 本地种子文件
 - 应用中心（面板内安装）
   - 一键安装 Jellyfin / qBittorrent / Portainer / Watchtower
   - 一键安装“影视套件”（Jellyfin + qBittorrent + Watchtower）
@@ -33,6 +35,11 @@
   - 自动续期任务（每天 03:00，临近到期自动续签）
 - 设置与安全
   - 集成配置页面（Jellyfin/qB）
+  - 用户配额、存储空间与缓存加速
+  - 网卡 IPv4/IPv6 编辑（含可选宿主写入）
+  - 远程访问、DDNS、外链分享
+  - 共享协议（SMB/WebDAV/FTP/NFS/DLNA）开关与端口
+  - 访问端口与强制 HTTPS 登录策略
   - 审计日志（登录、容器、下载、SSL、设置变更）
 
 ## 项目结构
@@ -79,7 +86,7 @@ make up
 - Web: `http://<服务器IP>:24443`（建议公网改为 `https://<域名>:端口`）
 - API Health: `http://<服务器IP>:24443/api/health`
 
-默认登录：
+默认登录（首次初始化）：
 - 用户名：`.env` 的 `ADMIN_USERNAME`
 - 密码：`.env` 的 `ADMIN_PASSWORD`
 
@@ -99,6 +106,12 @@ make up
 - `ARKNAS_INTERNAL_NETWORK`：应用中心容器接入的内部网络名
 - `CLOUDFLARE_API_TOKEN`：SSL 签发必须
 - `ACME_EMAIL`：证书通知邮箱（建议填写）
+- `FORCE_HTTPS_AUTH`：默认 `1`，强制 HTTPS 登录（可在设置页改）
+- `ALLOW_PLAINTEXT_LOGIN`：默认 `0`，禁止明文密码提交
+- `COMPOSE_PROJECTS_DIR`：Compose 向导项目存放目录
+- `ARKNAS_ALLOW_HOST_SERVICE_CONTROL`：允许对宿主服务执行 systemctl/service（默认开）
+- `ARKNAS_ALLOW_HOST_NETWORK_APPLY`：允许写入宿主网卡（默认开）
+- `ARKNAS_HOST_EXEC_MODE`：宿主执行模式，默认 `nsenter`
 
 ### 集成变量是否必填
 - `JELLYFIN_BASE_URL / JELLYFIN_API_KEY / JELLYFIN_USER_ID`：不是全局必填。
@@ -116,8 +129,17 @@ make up
 - 不直接暴露 Docker Socket，默认使用 `docker-socket-proxy`
 - 不依赖 80/443/8080，可用高位端口访问
 - 关键操作有审计日志
+- 登录支持公钥加密提交（默认禁止明文密码字段）
 - 建议公网场景叠加 VPN/Zero Trust、WAF、Fail2ban/CrowdSec
 - 浏览器 DevTools 的 Network 面板会显示请求体（即使是 HTTPS）；安全性取决于传输链路是否 HTTPS。
+
+## 宿主管理说明
+- 系统设置中的 SSH、防火墙、共享协议、网卡配置是“宿主执行”能力，不是容器内模拟开关。
+- 默认使用 `nsenter` 模式在宿主命名空间执行命令（`ARKNAS_HOST_EXEC_MODE=nsenter`）。
+- `infra/docker-compose.yml` 已为 `api` 服务设置 `pid: host` 与必要能力（`SYS_ADMIN`, `NET_ADMIN`）。
+- 若你不希望面板具备宿主执行能力，请将：
+  - `ARKNAS_ALLOW_HOST_SERVICE_CONTROL=0`
+  - `ARKNAS_ALLOW_HOST_NETWORK_APPLY=0`
 
 ## 文档
 - 需求说明：`docs/planning/SRS.zh-CN.md`

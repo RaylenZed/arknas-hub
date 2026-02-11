@@ -1,6 +1,16 @@
 import Docker from "dockerode";
+import fs from "node:fs";
+import path from "node:path";
+import { spawnSync } from "node:child_process";
 import { config } from "../config.js";
 import { HttpError } from "../lib/httpError.js";
+import {
+  deleteComposeProjectConfig,
+  getRegistrySettings,
+  listComposeProjectsConfig,
+  saveRegistrySettings,
+  upsertComposeProjectConfig
+} from "./systemService.js";
 
 function createDockerClient() {
   if (config.dockerHost.startsWith("unix://")) {
@@ -43,6 +53,66 @@ function parseNanoCpu(stats) {
   const cores = stats.cpu_stats.online_cpus || 1;
   if (systemDelta <= 0 || cpuDelta <= 0) return 0;
   return Number(((cpuDelta / systemDelta) * cores * 100).toFixed(2));
+}
+
+function commandExists(cmd) {
+  const checked = spawnSync("sh", ["-lc", `command -v ${cmd}`], {
+    encoding: "utf8",
+    timeout: 3000
+  });
+  return checked.status === 0;
+}
+
+function runComposeCommand({ project, composeFile, cwd, action }) {
+  const hasDocker = commandExists("docker");
+  const hasDockerCompose = commandExists("docker-compose");
+
+  const run = (cmd, args) =>
+    spawnSync(cmd, args, {
+      cwd,
+      encoding: "utf8",
+      timeout: 120000
+    });
+
+  const argsByAction = {
+    up: ["up", "-d"],
+    down: ["down"],
+    start: ["start"],
+    stop: ["stop"],
+    restart: ["restart"]
+  };
+  const actionArgs = argsByAction[action];
+  if (!actionArgs) throw new HttpError(400, "不支持的 Compose 动作");
+
+  if (hasDocker) {
+    const args = ["compose", "-p", project, "-f", composeFile, ...actionArgs];
+    const result = run("docker", args);
+    if (result.status === 0) {
+      return {
+        ok: true,
+        engine: "docker compose",
+        command: `docker ${args.join(" ")}`,
+        stdout: String(result.stdout || "").trim(),
+        stderr: String(result.stderr || "").trim()
+      };
+    }
+  }
+
+  if (hasDockerCompose) {
+    const args = ["-p", project, "-f", composeFile, ...actionArgs];
+    const result = run("docker-compose", args);
+    if (result.status === 0) {
+      return {
+        ok: true,
+        engine: "docker-compose",
+        command: `docker-compose ${args.join(" ")}`,
+        stdout: String(result.stdout || "").trim(),
+        stderr: String(result.stderr || "").trim()
+      };
+    }
+  }
+
+  throw new HttpError(500, "Compose 命令执行失败，请确认容器具备 docker compose 或 docker-compose");
 }
 
 export async function getDockerInfo() {
@@ -364,14 +434,35 @@ export async function listComposeProjects() {
       });
     }
 
-    return [...map.values()].map((v) => ({
+    const active = [...map.values()].map((v) => ({
       name: v.name,
       total: v.total,
       running: v.running,
       stopped: v.stopped,
       services: [...v.services],
-      containers: v.containers
+      containers: v.containers,
+      sourceType: "docker-labels",
+      projectPath: "",
+      composeFile: ""
     }));
+
+    const configured = listComposeProjectsConfig();
+    for (const cfg of configured) {
+      if (map.has(cfg.name)) continue;
+      active.push({
+        name: cfg.name,
+        total: 0,
+        running: 0,
+        stopped: 0,
+        services: [],
+        containers: [],
+        sourceType: cfg.source_type || "config",
+        projectPath: cfg.project_path || "",
+        composeFile: cfg.compose_file || ""
+      });
+    }
+
+    return active.sort((a, b) => a.name.localeCompare(b.name));
   } catch (err) {
     throw new HttpError(503, `Docker 服务不可用: ${err.message}`);
   }
@@ -395,7 +486,27 @@ export async function controlComposeProject(projectName, action) {
       }
     });
     if (list.length === 0) {
-      throw new HttpError(404, "未找到 Compose 项目");
+      const configured = listComposeProjectsConfig().find((item) => item.name === project);
+      if (!configured) throw new HttpError(404, "未找到 Compose 项目");
+
+      const composeFile = configured.compose_file || path.join(configured.project_path, "docker-compose.yml");
+      if (!fs.existsSync(composeFile)) {
+        throw new HttpError(404, `Compose 文件不存在: ${composeFile}`);
+      }
+      const cmd = runComposeCommand({
+        project,
+        composeFile,
+        cwd: configured.project_path,
+        action
+      });
+      return {
+        ok: true,
+        project,
+        action,
+        count: 0,
+        mode: "compose-cli",
+        command: cmd.command
+      };
     }
 
     for (const item of list) {
@@ -415,6 +526,128 @@ export async function controlComposeProject(projectName, action) {
     if (err instanceof HttpError) throw err;
     throw new HttpError(500, `项目操作失败: ${err.message}`);
   }
+}
+
+function normalizeProjectName(name) {
+  const project = String(name || "").trim();
+  if (!project) throw new HttpError(400, "项目名不能为空");
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]{1,63}$/.test(project)) {
+    throw new HttpError(400, "项目名仅支持字母、数字、下划线、点、短横线");
+  }
+  return project;
+}
+
+function ensureComposeFile(content) {
+  const text = String(content || "").trim();
+  if (!text) throw new HttpError(400, "Compose 内容不能为空");
+  if (!/services\\s*:/i.test(text)) {
+    throw new HttpError(400, "Compose 文件缺少 services 定义");
+  }
+  return `${text}\n`;
+}
+
+export async function createComposeProject({
+  name,
+  sourceType = "inline",
+  composeContent = "",
+  composePath = "",
+  startAfterCreate = false
+} = {}) {
+  const project = normalizeProjectName(name);
+  const resolvedBaseDir = path.resolve(config.composeProjectsDir, project);
+  fs.mkdirSync(resolvedBaseDir, { recursive: true });
+
+  let finalComposeFile = "";
+  let finalProjectPath = resolvedBaseDir;
+
+  if (sourceType === "existing") {
+    const existingPath = path.resolve(String(composePath || "").trim());
+    if (!existingPath || !fs.existsSync(existingPath)) {
+      throw new HttpError(400, "指定的 Compose 文件不存在");
+    }
+    finalComposeFile = existingPath;
+    finalProjectPath = path.dirname(existingPath);
+  } else {
+    const fileContent = ensureComposeFile(composeContent);
+    finalComposeFile = path.join(resolvedBaseDir, "docker-compose.yml");
+    fs.writeFileSync(finalComposeFile, fileContent, "utf8");
+  }
+
+  const row = upsertComposeProjectConfig({
+    name: project,
+    projectPath: finalProjectPath,
+    composeFile: finalComposeFile,
+    sourceType
+  });
+
+  let startup = {
+    started: false,
+    command: ""
+  };
+  if (startAfterCreate) {
+    const result = runComposeCommand({
+      project,
+      composeFile: finalComposeFile,
+      cwd: finalProjectPath,
+      action: "up"
+    });
+    startup = {
+      started: true,
+      command: result.command
+    };
+  }
+
+  return {
+    ok: true,
+    project,
+    sourceType,
+    projectPath: finalProjectPath,
+    composeFile: finalComposeFile,
+    startup,
+    config: row
+  };
+}
+
+export async function removeComposeProject(projectName, { down = false, removeFiles = false } = {}) {
+  const project = normalizeProjectName(projectName);
+  const configured = listComposeProjectsConfig().find((item) => item.name === project);
+  if (!configured) throw new HttpError(404, "Compose 项目配置不存在");
+
+  let command = "";
+  if (down && configured.compose_file && fs.existsSync(configured.compose_file)) {
+    const result = runComposeCommand({
+      project,
+      composeFile: configured.compose_file,
+      cwd: configured.project_path,
+      action: "down"
+    });
+    command = result.command;
+  }
+
+  deleteComposeProjectConfig(project);
+
+  if (removeFiles && configured.source_type !== "existing") {
+    try {
+      fs.rmSync(configured.project_path, { recursive: true, force: true });
+    } catch {
+      // ignore remove failures
+    }
+  }
+
+  return {
+    ok: true,
+    project,
+    removedFiles: Boolean(removeFiles && configured.source_type !== "existing"),
+    command
+  };
+}
+
+export function getDockerRegistrySettings() {
+  return getRegistrySettings();
+}
+
+export function updateDockerRegistrySettings(input = {}) {
+  return saveRegistrySettings(input);
 }
 
 function buildCreateOptions(inspect) {
