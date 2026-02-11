@@ -3,94 +3,65 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>ArkNAS Hub</title>
-    <style>
-      :root {
-        --bg: #f5f7fb;
-        --panel: #ffffff;
-        --text: #1f2937;
-        --muted: #6b7280;
-        --accent: #2563eb;
-      }
-      body {
-        margin: 0;
-        font-family: "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;
-        background: var(--bg);
-        color: var(--text);
-      }
-      .layout {
-        display: grid;
-        grid-template-columns: 220px 1fr;
-        min-height: 100vh;
-      }
-      .sidebar {
-        background: #eef2f7;
-        padding: 24px 16px;
-      }
-      .sidebar h1 {
-        font-size: 18px;
-        margin: 0 0 18px;
-      }
-      .menu {
-        display: grid;
-        gap: 8px;
-      }
-      .menu-item {
-        padding: 10px 12px;
-        border-radius: 8px;
-        color: #374151;
-      }
-      .menu-item.active {
-        background: #ffffff;
-        color: var(--accent);
-        font-weight: 600;
-      }
-      main {
-        padding: 24px;
-      }
-      .card {
-        background: var(--panel);
-        border: 1px solid #e5e7eb;
-        border-radius: 12px;
-        padding: 16px;
-        margin-bottom: 16px;
-      }
-      .meta {
-        color: var(--muted);
-        font-size: 14px;
-      }
-      code {
-        background: #f3f4f6;
-        padding: 2px 6px;
-        border-radius: 6px;
-      }
-    </style>
+    <title>方舟 NAS 中控台</title>
+    <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
-    <div class="layout">
+    <div id="app" class="app-shell hidden">
       <aside class="sidebar">
-        <h1>ArkNAS Hub</h1>
-        <div class="menu">
-          <div class="menu-item active">总览</div>
-          <div class="menu-item">容器管理</div>
-          <div class="menu-item">影视管理</div>
-          <div class="menu-item">下载管理</div>
-          <div class="menu-item">SSL 管理</div>
-          <div class="menu-item">设置</div>
-        </div>
+        <div class="brand">方舟 NAS</div>
+        <nav id="navMenu" class="nav-menu">
+          <button data-page="dashboard" class="nav-item active">总览</button>
+          <button data-page="containers" class="nav-item">容器管理</button>
+          <button data-page="media" class="nav-item">影视管理</button>
+          <button data-page="downloads" class="nav-item">下载管理</button>
+          <button data-page="ssl" class="nav-item">SSL 管理</button>
+          <button data-page="settings" class="nav-item">设置</button>
+        </nav>
       </aside>
-      <main>
-        <section class="card">
-          <h2>项目已初始化</h2>
-          <p class="meta">当前是第一阶段开发骨架，可通过 API 检查服务状态。</p>
-          <p>健康检查接口：<code>/api/health</code></p>
-        </section>
-        <section class="card">
-          <h3>下一步</h3>
-          <p class="meta">按 docs/process/TODO.md 进入 M1 开发。</p>
-        </section>
-      </main>
+
+      <div class="main-wrap">
+        <header class="topbar">
+          <div id="pageTitle" class="page-title">总览</div>
+          <div class="top-actions">
+            <button id="refreshBtn" class="btn btn-secondary">刷新</button>
+            <button id="logoutBtn" class="btn btn-danger">退出</button>
+          </div>
+        </header>
+
+        <main id="pageContent" class="content"></main>
+      </div>
     </div>
+
+    <div id="loginOverlay" class="login-overlay">
+      <form id="loginForm" class="login-card">
+        <h1>ArkNAS Hub</h1>
+        <p>请登录管理面板</p>
+        <label>
+          用户名
+          <input name="username" placeholder="admin" required />
+        </label>
+        <label>
+          密码
+          <input name="password" type="password" placeholder="请输入密码" required />
+        </label>
+        <button type="submit" class="btn btn-primary full">登录</button>
+        <p class="hint">默认账号来自环境变量 `ADMIN_USERNAME` / `ADMIN_PASSWORD`</p>
+      </form>
+    </div>
+
+    <div id="modal" class="modal hidden">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3 id="modalTitle"></h3>
+          <button id="modalClose" class="icon-btn">×</button>
+        </div>
+        <div id="modalBody" class="modal-body"></div>
+      </div>
+    </div>
+
+    <div id="toast" class="toast hidden"></div>
+
+    <script src="/app.js" type="module"></script>
   </body>
 </html>
-

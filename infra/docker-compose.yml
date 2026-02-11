@@ -1,15 +1,26 @@
-name: arknas-hub-dev
+name: arknas-hub
 
 services:
-  web:
-    build:
-      context: ../apps/web
-      dockerfile: Dockerfile
-    container_name: arknas-web
-    ports:
-      - "${WEB_PORT:-20080}:80"
-    depends_on:
-      - api
+  docker-proxy:
+    image: tecnativa/docker-socket-proxy:latest
+    container_name: arknas-docker-proxy
+    restart: unless-stopped
+    environment:
+      CONTAINERS: 1
+      IMAGES: 1
+      INFO: 1
+      NETWORKS: 1
+      VOLUMES: 1
+      POST: 1
+      SERVICES: 1
+      TASKS: 1
+      SYSTEM: 1
+      AUTH: 0
+      SECRETS: 0
+      SWARM: 0
+      EXEC: 0
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     networks:
       - arknas_internal
 
@@ -18,14 +29,47 @@ services:
       context: ../apps/api
       dockerfile: Dockerfile
     container_name: arknas-api
+    restart: unless-stopped
     environment:
+      NODE_ENV: production
       PORT: 8081
+      TZ: ${TZ:-Asia/Shanghai}
+      ARKNAS_DB_PATH: /data/sqlite/arknas.db
+      CERTS_DIR: /data/certs
+      JWT_SECRET: ${JWT_SECRET:-please-change-me}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-12h}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123456}
+      DOCKER_HOST: tcp://docker-proxy:2375
+      JELLYFIN_BASE_URL: ${JELLYFIN_BASE_URL:-}
+      JELLYFIN_API_KEY: ${JELLYFIN_API_KEY:-}
+      JELLYFIN_USER_ID: ${JELLYFIN_USER_ID:-}
+      QBIT_BASE_URL: ${QBIT_BASE_URL:-}
+      QBIT_USERNAME: ${QBIT_USERNAME:-}
+      QBIT_PASSWORD: ${QBIT_PASSWORD:-}
+      ACME_EMAIL: ${ACME_EMAIL:-}
+      ACME_DIRECTORY: ${ACME_DIRECTORY:-https://acme-v02.api.letsencrypt.org/directory}
+      CLOUDFLARE_API_TOKEN: ${CLOUDFLARE_API_TOKEN:-}
+    volumes:
+      - ../data:/data
+    depends_on:
+      - docker-proxy
+    networks:
+      - arknas_internal
+
+  web:
+    build:
+      context: ../apps/web
+      dockerfile: Dockerfile
+    container_name: arknas-web
+    restart: unless-stopped
     ports:
-      - "127.0.0.1:${API_PORT:-18081}:8081"
+      - "${PUBLIC_PORT:-24443}:80"
+    depends_on:
+      - api
     networks:
       - arknas_internal
 
 networks:
   arknas_internal:
     driver: bridge
-
