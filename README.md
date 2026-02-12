@@ -9,7 +9,7 @@
 - Traefik + Cloudflare DNS（HTTPS 自动证书）
 - rclone mount（把网盘挂载成宿主机目录）
 
-适配你的实际场景：不开放 80/443/8080，只使用高位端口（默认 8443/9443/10443）。
+适配你的实际场景：不开放 80/443/8080，只使用高位端口（默认 8443/2053/2096）。
 
 ---
 
@@ -119,14 +119,35 @@ docker compose ps
 访问地址（同域名、不同端口）：
 
 - Jellyfin: `https://pve.example.com:8443`
-- qBittorrent: `https://pve.example.com:9443`
-- OpenList: `https://pve.example.com:10443`
+- qBittorrent: `https://pve.example.com:2053`
+- OpenList: `https://pve.example.com:2096`
 
 说明：
 
 - 证书通过 DNS-01 签发，不依赖 80/443 入站。
 - 你只需开放 `JELLYFIN_HTTPS_PORT / QBIT_HTTPS_PORT / OPENLIST_HTTPS_PORT` 和 qB BT 端口（默认 16881 TCP/UDP）。
 - 若 Cloudflare 使用橙云代理，请确认端口在 Cloudflare 支持列表内；否则使用灰云直连。
+
+### 5.1 Cloudflare 橙云端口建议（重点）
+
+同域名不同端口是可行的，但如果 DNS 记录开了橙云代理，端口必须用 Cloudflare 支持的端口。
+
+- 推荐默认组合：
+- Jellyfin: `8443`
+- qBittorrent: `2053`
+- OpenList: `2096`
+
+Cloudflare 橙云常用可代理 HTTPS 端口：
+
+- `443`, `8443`, `2053`, `2083`, `2087`, `2096`
+
+Cloudflare 橙云常用可代理 HTTP 端口：
+
+- `80`, `8080`, `8880`, `2052`, `2082`, `2086`, `2095`
+
+如果你一定要用 `9443`、`10443` 之类端口：
+
+- 需要把 DNS 记录改成灰云（DNS only）直连，不能走橙云代理。
 
 ---
 
