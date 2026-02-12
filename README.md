@@ -346,3 +346,90 @@ journalctl -u rclone-openlist-root -f
 - `.env.example` 不包含 `ADMIN_USERNAME / ADMIN_PASSWORD`
 - 也不包含 `SEED_ADMIN_FROM_ENV`
 - 仓库只保留“媒体栈部署文件”，不再包含旧的 NAS 面板源码
+
+---
+
+## 15. 附加教程：新增 SSD 挂载并接入 Jellyfin（多来源同类资源）
+
+适用场景：
+
+- 你新增一块 SSD，想把它作为本地媒体盘。
+- 同时保留网盘内容，Jellyfin 统一展示。
+- 例如同时存在：
+  - 网盘：`/media/cloud/quark/TV`
+  - SSD：`/media/ssd/TV`
+
+### 15.1 查看新盘与文件系统
+
+```bash
+lsblk -f
+```
+
+记下你的设备名与 UUID（示例设备：`/dev/nvme1n1p1`）。
+
+### 15.2 （可选）格式化为 ext4
+
+仅在新盘无数据时执行：
+
+```bash
+mkfs.ext4 /dev/nvme1n1p1
+```
+
+### 15.3 挂载并测试
+
+```bash
+mkdir -p /mnt/ssd
+mount /dev/nvme1n1p1 /mnt/ssd
+df -h | grep /mnt/ssd
+```
+
+### 15.4 写入 fstab（开机自动挂载）
+
+先获取 UUID：
+
+```bash
+blkid /dev/nvme1n1p1
+```
+
+编辑 `/etc/fstab` 增加一行（将 UUID 替换为实际值）：
+
+```fstab
+UUID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx /mnt/ssd ext4 defaults,nofail 0 2
+```
+
+应用并验证：
+
+```bash
+umount /mnt/ssd
+mount -a
+df -h | grep /mnt/ssd
+```
+
+### 15.5 给 Jellyfin 增加 SSD 映射
+
+编辑 `docker-compose.yml` 中 `jellyfin` 的 `volumes`，追加：
+
+```yaml
+- /mnt/ssd/media:/media/ssd:ro
+```
+
+重建 Jellyfin：
+
+```bash
+docker compose up -d jellyfin
+```
+
+### 15.6 在 Jellyfin 里配置“同一媒体库多个文件夹”
+
+Jellyfin 支持一个媒体库挂多个路径。  
+以“电视剧库”为例，可以同时添加：
+
+- `/media/cloud/quark/TV`
+- `/media/ssd/TV`
+
+这样会在同一个 TV 库里统一展示。
+
+建议：
+
+- 两侧文件命名规则保持一致，减少重复识别。
+- 如果存在重复剧集，优先保留一个主来源，另一路做备份。
