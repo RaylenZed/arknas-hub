@@ -1,0 +1,16 @@
+{
+    email {$ACME_EMAIL}
+    acme_dns cloudflare {$CF_DNS_API_TOKEN}
+}
+
+{$BASE_DOMAIN}:{$JELLYFIN_HTTPS_PORT} {
+    reverse_proxy jellyfin:8096
+}
+
+{$BASE_DOMAIN}:{$QBIT_HTTPS_PORT} {
+    reverse_proxy qbittorrent:8080
+}
+
+{$BASE_DOMAIN}:{$OPENLIST_HTTPS_PORT} {
+    reverse_proxy openlist:5244
+}

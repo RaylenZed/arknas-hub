@@ -1,37 +1,38 @@
 # ArkMedia Stack
 
-一个专注家庭影音的极简生产方案：
+极简家用媒体栈（Caddy 版）：
 
 - OpenList（外部网盘聚合）
-- Jellyfin（媒体库与播放）
+- Jellyfin（媒体库/播放）
 - qBittorrent（下载）
 - Watchtower（自动更新）
-- Traefik + Cloudflare DNS（HTTPS 自动证书）
-- rclone mount（把网盘挂载成宿主机目录）
+- Caddy + Cloudflare DNS（自动 HTTPS 证书）
+- rclone mount（把网盘挂成宿主机目录）
 
-适配你的实际场景：不开放 80/443/8080，只使用高位端口（默认 8443/2053/2096）。
-
----
-
-## 1. 项目定位
-
-这个仓库不再是完整 NAS 面板开发项目，而是可直接落地的一键部署方案。
-
-推荐使用路径：
-
-- 项目目录：`/srv/arkstack`
-- 本地媒体：`/srv/media/local`
-- 下载目录：`/srv/downloads`
-- 网盘挂载根：`/srv/cloud`
+适配场景：不开放 80/443/8080，只用高位端口；同域名不同端口统一访问。
 
 ---
 
-## 2. 目录结构
+## 1. 当前架构
+
+- 统一域名：`pve.example.com`
+- 业务入口：
+  - Jellyfin：`https://pve.example.com:8443`
+  - qBittorrent：`https://pve.example.com:2053`
+  - OpenList：`https://pve.example.com:2096`
+- 证书：Caddy 通过 Cloudflare DNS-01 自动签发
+- 网盘：OpenList 提供 WebDAV，rclone 挂到 `/srv/cloud`
+
+---
+
+## 2. 仓库结构
 
 ```text
 .
 ├── .env.example
 ├── docker-compose.yml
+├── Dockerfile.caddy
+├── Caddyfile
 ├── README.md
 └── systemd
     ├── rclone-openlist-drive@.service
@@ -40,14 +41,14 @@
 
 ---
 
-## 3. 先决条件（Debian）
+## 3. 安装前提（Debian）
 
 命令约定：
 
-- 如果你是 `root`，直接执行命令（不要 `sudo`）。
-- 如果你是普通用户，把文档里的命令前加 `sudo`。
+- 你是 `root`：直接执行，不要 `sudo`
+- 你是普通用户：命令前加 `sudo`
 
-### 3.1 安装 Docker（官方脚本，推荐）
+### 3.1 安装 Docker（官方脚本）
 
 ```bash
 curl -fsSL https://get.docker.com -o install-docker.sh
@@ -64,7 +65,7 @@ apt update
 apt install -y rclone fuse3 curl
 ```
 
-启用 FUSE 的 `allow_other`：
+开启 FUSE `allow_other`：
 
 ```bash
 sed -i 's/^#user_allow_other/user_allow_other/' /etc/fuse.conf
@@ -74,109 +75,97 @@ sed -i 's/^#user_allow_other/user_allow_other/' /etc/fuse.conf
 
 ## 4. 初始化部署
 
+### 4.1 放置项目
+
 ```bash
 cd /srv
 mkdir -p arkstack
 cd /srv/arkstack
-# 将本仓库内容放到这里
+# 将本仓库文件放到这里
 ```
 
-复制环境变量模板：
+### 4.2 生成环境变量
 
 ```bash
 cp .env.example .env
 ```
 
-按需修改 `.env`：
+最少修改以下字段：
 
-- `BASE_DOMAIN`
+- `BASE_DOMAIN`（例：`pve.example.com`）
 - `ACME_EMAIL`
 - `CF_DNS_API_TOKEN`
-- `JELLYFIN_HTTPS_PORT / QBIT_HTTPS_PORT / OPENLIST_HTTPS_PORT`
-- 路径变量（默认值可直接用）
 
-创建宿主机目录：
+### 4.3 一条命令创建目录
 
 ```bash
-mkdir -p /srv/docker/{traefik,openlist,jellyfin/config,jellyfin/cache,qbittorrent} /srv/media/{local,incoming} /srv/downloads /srv/cloud /var/cache/rclone && touch /srv/docker/traefik/acme.json && chmod 600 /srv/docker/traefik/acme.json
+mkdir -p /srv/docker/{caddy/data,caddy/config,openlist,jellyfin/config,jellyfin/cache,qbittorrent} /srv/media/{local,incoming} /srv/downloads /srv/cloud /var/cache/rclone
 ```
 
-启动：
+### 4.4 启动
 
 ```bash
-docker compose up -d
+docker compose up -d --build
 docker compose ps
 ```
 
 ---
 
-## 5. 域名与 HTTPS（Cloudflare）
+## 5. Cloudflare DNS 与端口
 
-在 Cloudflare DNS 中添加一个 A 记录到 VPS：
+### 5.1 DNS
 
-- `<BASE_DOMAIN>` -> VPS IP
+添加一条 A 记录：
 
-访问地址（同域名、不同端口）：
+- `pve.example.com -> VPS IP`
 
-- Jellyfin: `https://pve.example.com:8443`
-- qBittorrent: `https://pve.example.com:2053`
-- OpenList: `https://pve.example.com:2096`
+### 5.2 端口（橙云建议）
 
-说明：
-
-- 证书通过 DNS-01 签发，不依赖 80/443 入站。
-- 你只需开放 `JELLYFIN_HTTPS_PORT / QBIT_HTTPS_PORT / OPENLIST_HTTPS_PORT` 和 qB BT 端口（默认 16881 TCP/UDP）。
-- 若 Cloudflare 使用橙云代理，请确认端口在 Cloudflare 支持列表内；否则使用灰云直连。
-
-### 5.1 Cloudflare 橙云端口建议（重点）
-
-同域名不同端口是可行的，但如果 DNS 记录开了橙云代理，端口必须用 Cloudflare 支持的端口。
-
-- 推荐默认组合：
-- Jellyfin: `8443`
-- qBittorrent: `2053`
-- OpenList: `2096`
-
-Cloudflare 橙云常用可代理 HTTPS 端口：
+Cloudflare 橙云代理支持的常用 HTTPS 端口：
 
 - `443`, `8443`, `2053`, `2083`, `2087`, `2096`
 
-Cloudflare 橙云常用可代理 HTTP 端口：
+本项目默认端口：
 
-- `80`, `8080`, `8880`, `2052`, `2082`, `2086`, `2095`
+- `8443`（Jellyfin）
+- `2053`（qBittorrent）
+- `2096`（OpenList）
 
-如果你一定要用 `9443`、`10443` 之类端口：
+如果你改用 `9443`、`10443` 这类端口：
 
-- 需要把 DNS 记录改成灰云（DNS only）直连，不能走橙云代理。
-
----
-
-## 6. OpenList 与夸克接入
-
-1. 登录 OpenList。
-2. 添加存储：选择夸克驱动，按驱动文档填写参数。
-3. 创建一个专用账号用于 WebDAV（建议只读）。
-4. 确认 WebDAV 地址：`http://127.0.0.1:25244/dav`（宿主机本地访问）。
-
-> OpenList 负责“接入夸克等网盘”；
-> rclone 负责“把 OpenList WebDAV 挂成本地目录”。
+- 需要灰云（DNS only）直连。
 
 ---
 
-## 7. rclone 配置
+## 6. OpenList 接入夸克
 
-进入交互配置：
+1. 登录 OpenList（`https://pve.example.com:2096`）
+2. 添加夸克存储
+3. 创建一个 WebDAV 专用账号（建议只读）
+4. WebDAV 地址（宿主机本地）：`http://127.0.0.1:25244/dav`
+
+说明：
+
+- OpenList 负责“接入网盘”
+- rclone 负责“挂载成宿主机目录”
+
+---
+
+## 7. rclone 配置与挂载
+
+### 7.1 创建 remote
 
 ```bash
 rclone config
 ```
 
-新建 remote（建议名 `openlist`）：
+建议配置：
 
-- `Storage` 选 `webdav`
-- `url` 填 `http://127.0.0.1:25244/dav`
-- `vendor` 选 `other`
-- 用户名/密码填 OpenList WebDAV 账号
+- name: `openlist`
+- type: `webdav`
+- url: `http://127.0.0.1:25244/dav`
+- vendor: `other`
+- user/password：OpenList WebDAV 账号
 
 验证：
 
@@ -184,11 +173,7 @@ rclone config
 rclone lsd openlist:
 ```
 
----
-
-## 8. 单网盘挂载方案（最简单）
-
-把 OpenList 根目录整体挂到 `/srv/cloud`：
+### 7.2 单网盘方案（挂根目录）
 
 ```bash
 cp systemd/rclone-openlist-root.service /etc/systemd/system/
@@ -197,45 +182,31 @@ systemctl enable --now rclone-openlist-root
 systemctl status rclone-openlist-root
 ```
 
-验证：
+挂载后检查：
 
 ```bash
 ls -lah /srv/cloud
 ```
 
-Jellyfin 里配置媒体库目录：
+### 7.3 多网盘方案（每个网盘一个挂载服务）
 
-- `/media/cloud/<你的网盘目录>/Movies`
-- `/media/cloud/<你的网盘目录>/TV`
-
----
-
-## 9. 多网盘挂载方案（推荐生产）
-
-适合场景：夸克、阿里云盘、115、OneDrive 等分开管理，互不影响。
-
-先创建目标目录（举例）：
+创建挂载目录：
 
 ```bash
 mkdir -p /srv/cloud/{quark,alipan,onedrive}
 ```
 
-安装模板服务：
+安装模板并启动实例：
 
 ```bash
 cp systemd/rclone-openlist-drive@.service /etc/systemd/system/
 systemctl daemon-reload
-```
-
-为每个网盘启动一个实例（实例名就是 OpenList 里的路径名）：
-
-```bash
 systemctl enable --now rclone-openlist-drive@quark
 systemctl enable --now rclone-openlist-drive@alipan
 systemctl enable --now rclone-openlist-drive@onedrive
 ```
 
-查看状态：
+检查：
 
 ```bash
 systemctl status rclone-openlist-drive@quark
@@ -243,139 +214,38 @@ systemctl status rclone-openlist-drive@alipan
 systemctl status rclone-openlist-drive@onedrive
 ```
 
-停止某一个：
+---
 
-```bash
-systemctl disable --now rclone-openlist-drive@onedrive
-```
+## 8. Jellyfin 多来源扫描（网盘 + 本地）
 
-Jellyfin 建议按挂载点分别建库：
+Jellyfin 可以在一个库里添加多个文件夹。例如 TV 库可同时添加：
 
-- `/media/cloud/quark`
-- `/media/cloud/alipan`
-- `/media/cloud/onedrive`
+- `/media/cloud/quark/TV`
+- `/media/local/TV`
+
+容器映射已包含：
+
+- `/srv/media/local -> /media/local`
+- `/srv/media/incoming -> /media/incoming`
+- `/srv/cloud -> /media/cloud`
 
 ---
 
-## 10. qBittorrent 与 Jellyfin 联动建议
+## 9. 附加教程：新增 SSD 挂载并接入 Jellyfin
 
-- qB 下载目录：`/downloads`
-- 媒体整理目录：`/media/incoming`
-- Jellyfin 同时扫描：
-  - `/media/local`
-  - `/media/incoming`
-  - `/media/cloud`
-
-建议再配一个小脚本做下载完成后整理（可选）。
-
----
-
-## 11. 常用运维命令
-
-```bash
-# 查看服务
-docker compose ps
-
-# 看日志
-docker compose logs -f openlist
-docker compose logs -f jellyfin
-docker compose logs -f qbittorrent
-
-docker compose logs -f traefik
-
-# 更新镜像并重建
-docker compose pull
-docker compose up -d
-
-# 查看挂载是否还在
-mount | grep /srv/cloud
-```
-
----
-
-## 12. 安全建议（必须）
-
-- Cloudflare Token 仅授予必要 DNS 权限。
-- OpenList WebDAV 账号最小权限（只读优先）。
-- `25244` 只监听 `127.0.0.1`，不要暴露公网。
-- Jellyfin 的 `/media/cloud` 建议只读挂载。
-- 公网建议叠加：Fail2ban / WAF / Cloudflare Access（可选）。
-
----
-
-## 13. 故障排查
-
-### 13.1 证书签发失败
-
-检查：
-
-- `CF_DNS_API_TOKEN` 是否有效
-- DNS 记录是否指向 VPS
-- `acme.json` 权限是否 `600`
-
-看日志：
-
-```bash
-docker compose logs -f traefik
-```
-
-### 13.2 rclone 看不到目录
-
-检查：
-
-```bash
-rclone lsd openlist:
-systemctl status rclone-openlist-root
-journalctl -u rclone-openlist-root -f
-```
-
-### 13.3 Jellyfin 看不到网盘媒体
-
-检查：
-
-- `/srv/cloud` 是否有文件
-- `docker compose exec jellyfin ls -lah /media/cloud`
-- Jellyfin 媒体库路径是否正确
-
----
-
-## 14. 版本识别（你要求的“好判断”）
-
-这个版本的特征：
-
-- `.env.example` 不包含 `ADMIN_USERNAME / ADMIN_PASSWORD`
-- 也不包含 `SEED_ADMIN_FROM_ENV`
-- 仓库只保留“媒体栈部署文件”，不再包含旧的 NAS 面板源码
-
----
-
-## 15. 附加教程：新增 SSD 挂载并接入 Jellyfin（多来源同类资源）
-
-适用场景：
-
-- 你新增一块 SSD，想把它作为本地媒体盘。
-- 同时保留网盘内容，Jellyfin 统一展示。
-- 例如同时存在：
-  - 网盘：`/media/cloud/quark/TV`
-  - SSD：`/media/ssd/TV`
-
-### 15.1 查看新盘与文件系统
+### 9.1 查看设备
 
 ```bash
 lsblk -f
 ```
 
-记下你的设备名与 UUID（示例设备：`/dev/nvme1n1p1`）。
-
-### 15.2 （可选）格式化为 ext4
-
-仅在新盘无数据时执行：
+### 9.2 （可选）新盘格式化 ext4
 
 ```bash
 mkfs.ext4 /dev/nvme1n1p1
 ```
 
-### 15.3 挂载并测试
+### 9.3 挂载测试
 
 ```bash
 mkdir -p /mnt/ssd
@@ -383,21 +253,21 @@ mount /dev/nvme1n1p1 /mnt/ssd
 df -h | grep /mnt/ssd
 ```
 
-### 15.4 写入 fstab（开机自动挂载）
+### 9.4 开机自动挂载（fstab）
 
-先获取 UUID：
+获取 UUID：
 
 ```bash
 blkid /dev/nvme1n1p1
 ```
 
-编辑 `/etc/fstab` 增加一行（将 UUID 替换为实际值）：
+写入 `/etc/fstab`（示例）：
 
 ```fstab
 UUID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx /mnt/ssd ext4 defaults,nofail 0 2
 ```
 
-应用并验证：
+生效验证：
 
 ```bash
 umount /mnt/ssd
@@ -405,134 +275,75 @@ mount -a
 df -h | grep /mnt/ssd
 ```
 
-### 15.5 给 Jellyfin 增加 SSD 映射
+### 9.5 加入 Jellyfin 扫描
 
-编辑 `docker-compose.yml` 中 `jellyfin` 的 `volumes`，追加：
+编辑 `docker-compose.yml` 的 `jellyfin.volumes`，追加：
 
 ```yaml
 - /mnt/ssd/media:/media/ssd:ro
 ```
 
-重建 Jellyfin：
+重启 Jellyfin：
 
 ```bash
 docker compose up -d jellyfin
 ```
 
-### 15.6 在 Jellyfin 里配置“同一媒体库多个文件夹”
-
-Jellyfin 支持一个媒体库挂多个路径。  
-以“电视剧库”为例，可以同时添加：
+然后在 Jellyfin 库中增加路径：
 
 - `/media/cloud/quark/TV`
 - `/media/ssd/TV`
 
-这样会在同一个 TV 库里统一展示。
+---
 
-建议：
+## 10. 统一入口扩展（后续加 Dify 等）
 
-- 两侧文件命名规则保持一致，减少重复识别。
-- 如果存在重复剧集，优先保留一个主来源，另一路做备份。
+如果新增服务（比如 Dify），思路是固定的：
+
+1. 在 compose 增加新服务容器
+2. 在 `Caddyfile` 新增一段同域名+新端口反代
+3. 在 `.env` 增加对应端口变量
+4. `docker compose up -d --build`
+
+示例（Dify 网关假设端口 3000）：
+
+```caddy
+{$BASE_DOMAIN}:{$DIFY_HTTPS_PORT} {
+    reverse_proxy dify:3000
+}
+```
 
 ---
 
-## 16. 可选方案：使用 Caddy + Cloudflare 插件（替代 Traefik）
-
-如果你觉得 Traefik 配置成本偏高，可以切换到 Caddy。  
-本节是“替代反向代理”方案，不要和 Traefik 同时对外监听同一端口。
-
-### 16.1 适用场景
-
-- 需要更轻量的配置文件。
-- 仍要 Cloudflare DNS-01 自动签证书。
-- 继续使用同域名不同端口访问业务。
-
-### 16.2 创建 `Dockerfile.caddy`
-
-在项目根目录新建 `Dockerfile.caddy`：
-
-```dockerfile
-FROM caddy:2-builder AS builder
-RUN xcaddy build --with github.com/caddy-dns/cloudflare
-
-FROM caddy:2
-COPY --from=builder /usr/bin/caddy /usr/bin/caddy
-```
-
-### 16.3 创建 `Caddyfile`
-
-在项目根目录新建 `Caddyfile`：
-
-```caddy
-{
-    email you@example.com
-    acme_dns cloudflare {env.CF_DNS_API_TOKEN}
-}
-
-pve.example.com:8443 {
-    reverse_proxy arkmedia-jellyfin:8096
-}
-
-pve.example.com:2053 {
-    reverse_proxy arkmedia-qbittorrent:8080
-}
-
-pve.example.com:2096 {
-    reverse_proxy arkmedia-openlist:5244
-}
-```
-
-把 `pve.example.com` 改成你的实际域名（与 `.env` 的 `BASE_DOMAIN` 保持一致）。
-
-### 16.4 创建 `docker-compose.caddy.yml`（覆盖文件）
-
-在项目根目录新建 `docker-compose.caddy.yml`：
-
-```yaml
-services:
-  traefik:
-    profiles: ["disabled"]
-
-  caddy:
-    build:
-      context: .
-      dockerfile: Dockerfile.caddy
-    container_name: arkmedia-caddy
-    restart: unless-stopped
-    ports:
-      - "${JELLYFIN_HTTPS_PORT}:${JELLYFIN_HTTPS_PORT}"
-      - "${QBIT_HTTPS_PORT}:${QBIT_HTTPS_PORT}"
-      - "${OPENLIST_HTTPS_PORT}:${OPENLIST_HTTPS_PORT}"
-    environment:
-      - CF_DNS_API_TOKEN=${CF_DNS_API_TOKEN}
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
-    networks:
-      - media_net
-
-volumes:
-  caddy_data:
-  caddy_config:
-```
-
-### 16.5 启动 Caddy 模式
+## 11. 常用运维命令
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.caddy.yml up -d --build
-```
+# 服务状态
+docker compose ps
 
-### 16.6 验证 Cloudflare 插件
-
-```bash
-docker compose exec caddy caddy list-modules | grep cloudflare
+# 日志
 docker compose logs -f caddy
+docker compose logs -f jellyfin
+docker compose logs -f qbittorrent
+docker compose logs -f openlist
+
+# 升级镜像
+docker compose pull
+docker compose up -d
+
+# 检查挂载
+mount | grep /srv/cloud
+
+# 查看 Caddy 是否有 cloudflare dns 模块
+docker compose exec caddy caddy list-modules | grep cloudflare
 ```
 
-如果输出中存在 `dns.providers.cloudflare`，说明插件已正常加载。
+---
 
-### 16.7 注意事项
+## 12. 安全建议
 
-- Cloudflare 橙云下请使用支持端口（建议 `8443/2053/2096`）。
-- 如果使用 `9443`、`10443` 这类端口，需要灰云（DNS only）直连。
+- `CF_DNS_API_TOKEN` 只给最小权限：`Zone.DNS:Edit` + `Zone:Read`
+- `127.0.0.1:25244` 不要改成公网监听
+- Jellyfin 网盘路径建议只读挂载
+- 公网可叠加：Fail2ban / CrowdSec / Cloudflare Access
+
