@@ -43,10 +43,6 @@
 ├── Dockerfile.caddy
 ├── Caddyfile
 ├── README.md
-├── scripts
-│   ├── bootstrap.sh
-│   └── qbittorrent-init
-│       └── 10-reverse-proxy.sh
 └── systemd
     ├── rclone-openlist-root.service
     └── rclone-openlist-drive@.service
@@ -98,17 +94,16 @@ cp .env.example .env
 - `ACME_EMAIL=you@example.com`
 - `CF_DNS_API_TOKEN=...`
 
-### 4.4 一键初始化目录与权限
+### 4.4 手动初始化目录与权限
 
 ```bash
-sudo ./scripts/bootstrap.sh
+sudo mkdir -p /srv/docker/{caddy/data,caddy/config,openlist,jellyfin/config,jellyfin/cache,qbittorrent} /srv/media/{local,incoming} /srv/downloads /srv/cloud /var/cache/rclone
+sudo chown -R 1000:1000 /srv/docker/openlist /srv/docker/qbittorrent
+sudo chmod -R u+rwX,g+rwX /srv/docker/openlist /srv/docker/qbittorrent
+sudo chmod 755 /srv /srv/docker
 ```
 
-这一步会做：
-
-- 创建所有宿主机目录
-- 修复 OpenList/qBittorrent 目录权限
-- 预防 OpenList 启动时报 `/opt/openlist/data` 权限错误
+如果你把 `.env` 里的 `PUID/PGID` 改成其他值，`chown` 也要改成对应 UID/GID。
 
 ### 4.5 启动服务
 
@@ -312,12 +307,22 @@ sudo docker compose up -d --force-recreate openlist
 
 ### 9.2 qBittorrent `Unauthorized`（反代场景）
 
-项目已内置 `scripts/qbittorrent-init/10-reverse-proxy.sh`，容器启动时会自动写入兼容配置（关闭 HostHeader/CSRF 严格校验，开启反代支持）。
-
-重建 qB：
+手动写入反代兼容配置（关闭 HostHeader/CSRF 严格校验，开启反代支持）：
 
 ```bash
-sudo docker compose up -d --force-recreate qbittorrent
+cd /srv/arkstack
+QBIT_CONFIG=$(awk -F= '/^QBIT_CONFIG=/{print $2}' .env)
+sudo mkdir -p "$QBIT_CONFIG/qBittorrent"
+sudo touch "$QBIT_CONFIG/qBittorrent/qBittorrent.conf"
+sudo tee -a "$QBIT_CONFIG/qBittorrent/qBittorrent.conf" >/dev/null <<'EOF'
+
+WebUI\ReverseProxySupportEnabled=true
+WebUI\HostHeaderValidation=false
+WebUI\CSRFProtection=false
+EOF
+sudo chown -R 1000:1000 "$QBIT_CONFIG"
+sudo chmod -R u+rwX,g+rwX "$QBIT_CONFIG"
+sudo docker compose up -d --force-recreate qbittorrent caddy
 ```
 
 再查看临时密码并用无痕窗口登录：
@@ -405,4 +410,3 @@ sudo rm -rf /srv/docker/caddy /srv/docker/openlist /srv/docker/jellyfin /srv/doc
 - OpenList WebDAV 仅本地监听（`127.0.0.1:25244`）
 - 媒体库目录优先只读挂载（`:ro`）
 - 公网部署建议叠加 Fail2ban / CrowdSec / Cloudflare Access
-

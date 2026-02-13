@@ -1,22 +1,6 @@
 name: arkmedia-stack
 
 services:
-  init-perms:
-    image: alpine:3.21
-    container_name: arkmedia-init-perms
-    command:
-      - /bin/sh
-      - -c
-      - |
-        set -eu
-        mkdir -p /openlist /qbittorrent
-        chown -R ${PUID}:${PGID} /openlist /qbittorrent
-        chmod -R u+rwX,g+rwX /openlist /qbittorrent
-    volumes:
-      - ${OPENLIST_DATA}:/openlist
-      - ${QBIT_CONFIG}:/qbittorrent
-    restart: "no"
-
   caddy:
     build:
       context: .
@@ -42,14 +26,9 @@ services:
     labels:
       - com.centurylinklabs.watchtower.enable=true
     depends_on:
-      init-perms:
-        condition: service_completed_successfully
-      openlist:
-        condition: service_started
-      jellyfin:
-        condition: service_started
-      qbittorrent:
-        condition: service_started
+      - openlist
+      - jellyfin
+      - qbittorrent
     networks:
       - media_net
 
@@ -57,9 +36,6 @@ services:
     image: openlistteam/openlist:latest
     container_name: arkmedia-openlist
     restart: unless-stopped
-    depends_on:
-      init-perms:
-        condition: service_completed_successfully
     environment:
       - TZ=${TZ}
       - PUID=${PUID}
@@ -94,9 +70,6 @@ services:
     image: lscr.io/linuxserver/qbittorrent:latest
     container_name: arkmedia-qbittorrent
     restart: unless-stopped
-    depends_on:
-      init-perms:
-        condition: service_completed_successfully
     environment:
       - TZ=${TZ}
       - PUID=${PUID}
@@ -107,7 +80,6 @@ services:
       - ${QBIT_CONFIG}:/config
       - ${DOWNLOADS_PATH}:/downloads
       - ${MEDIA_INCOMING_PATH}:/media/incoming
-      - ./scripts/qbittorrent-init/10-reverse-proxy.sh:/custom-cont-init.d/10-reverse-proxy.sh:ro
     ports:
       - "16881:16881/tcp"
       - "16881:16881/udp"
