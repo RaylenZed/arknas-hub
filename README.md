@@ -367,6 +367,36 @@ sudo docker compose up -d --force-recreate qbittorrent caddy
 sudo docker compose logs qbittorrent | rg -i "temporary password|administrator password"
 ```
 
+如果登录页静态资源也返回 401（表现为“无样式登录页”），继续执行：
+
+```bash
+cd /srv/arkstack
+sudo docker compose logs --tail=200 qbittorrent | rg -i "origin|referer|host header|csrf|unauthorized" || true
+```
+
+然后确认 `Caddyfile` 的 qB 段包含以下关键项：
+
+```caddy
+{$BASE_DOMAIN}:{$QBIT_HTTPS_PORT} {
+    reverse_proxy qbittorrent:8080 {
+        header_up Host qbittorrent:8080
+        header_up X-Forwarded-Host {http.request.header.Host}
+        header_up X-Forwarded-Proto https
+        header_up -Origin
+        header_up -Referer
+    }
+}
+```
+
+应用配置后重建：
+
+```bash
+cd /srv/arkstack
+sudo docker compose up -d --force-recreate qbittorrent caddy
+```
+
+再用无痕窗口访问并登录，避免旧 cookie 影响。
+
 ### 9.3 Watchtower 报 Docker API 版本过旧
 
 本项目默认已加：

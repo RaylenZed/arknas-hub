@@ -15,11 +15,14 @@
 
 {$BASE_DOMAIN}:{$QBIT_HTTPS_PORT} {
     reverse_proxy qbittorrent:8080 {
-        header_up Host {host}
+        # qBittorrent WebUI is strict about Origin/Host checks behind reverse proxy.
+        # Keep upstream Host internal, while forwarding external host:port explicitly.
+        header_up Host qbittorrent:8080
+        header_up X-Forwarded-Host {http.request.header.Host}
         header_up X-Real-IP {remote_host}
-        header_up X-Forwarded-For {remote_host}
         header_up X-Forwarded-Proto https
-        header_up X-Forwarded-Host {host}
+        header_up -Origin
+        header_up -Referer
     }
 }
 
