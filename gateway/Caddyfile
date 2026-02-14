@@ -8,12 +8,7 @@
 }
 
 {$BASE_DOMAIN}:{$QBIT_HTTPS_PORT} {
-    reverse_proxy qbittorrent:8080 {
-        header_up Host {host}
-        header_up X-Forwarded-Host {host}
-        header_up X-Forwarded-Proto https
-        header_up X-Forwarded-Port {$QBIT_HTTPS_PORT}
-    }
+    reverse_proxy qbittorrent:8080
 }
 
 {$BASE_DOMAIN}:{$OPENLIST_HTTPS_PORT} {
