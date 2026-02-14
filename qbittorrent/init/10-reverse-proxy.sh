@@ -17,14 +17,16 @@ fi
 set_pref() {
   local key="$1"
   local value="$2"
-  if grep -q "^${key}=" "${CONF}"; then
-    sed -i "s|^${key}=.*|${key}=${value}|" "${CONF}"
+  local key_pattern
+  key_pattern="$(printf '%s' "${key}" | sed -e 's/[][\\/.*^$]/\\&/g')"
+  if grep -Fq "${key}=" "${CONF}"; then
+    sed -i "s|^${key_pattern}=.*|${key}=${value}|" "${CONF}"
   else
     printf '%s=%s\n' "${key}" "${value}" >> "${CONF}"
   fi
 }
 
-set_pref 'WebUI\Address' '*'
+set_pref 'WebUI\Address' '0.0.0.0'
 set_pref 'WebUI\Port' '8080'
 set_pref 'WebUI\HostHeaderValidation' 'false'
 set_pref 'WebUI\CSRFProtection' 'false'
